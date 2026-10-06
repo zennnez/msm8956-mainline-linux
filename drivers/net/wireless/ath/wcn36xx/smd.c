@@ -2601,10 +2601,21 @@ static int wcn36xx_smd_tx_compl_ind(struct wcn36xx *wcn, void *buf, size_t len)
 {
 	struct wcn36xx_hal_tx_compl_ind_msg *rsp = buf;
 
-	if (len != sizeof(*rsp)) {
-		wcn36xx_warn("Bad TX complete indication\n");
+	if (len < sizeof(*rsp)) {
+		wcn36xx_warn("Bad TX complete indication (len %zu, need %zu)\n",
+			     len, sizeof(*rsp));
 		return -EIO;
 	}
+
+	/*
+	 * Some WCNSS firmware builds send a longer indication than the 12
+	 * bytes this driver was written for. Only the status word is used,
+	 * and dropping the message loses the ACK result that mac80211 needs
+	 * for its nullfunc connection probe (=> spurious disconnects).
+	 */
+	if (len != sizeof(*rsp))
+		pr_warn_once("wcn36xx: TX complete indication is %zu bytes (expected %zu), using status word only\n",
+			     len, sizeof(*rsp));
 
 	wcn36xx_dxe_tx_ack_ind(wcn, rsp->status);
 
